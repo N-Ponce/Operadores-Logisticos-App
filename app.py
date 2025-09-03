@@ -196,7 +196,6 @@ st.text_input(
 st.markdown("Vista del diccionario (primeros 200):")
 st.dataframe(st.session_state.dict_df.head(200), use_container_width=True, height=350)
 
-=======
         st.success(f"Ingesta completa. Nuevos registros: {len(new_df)} | Total en diccionario: {len(st.session_state.dict_df)}")
     else:
         st.info("No se encontraron productos para la búsqueda indicada.")
