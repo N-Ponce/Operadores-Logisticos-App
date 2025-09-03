@@ -32,21 +32,63 @@ def fetch(url: str) -> str | None:
     except Exception:
         return None
 
-def find_links(html: str, base_url: str) -> list[str]:
+def find_links(html: str, base_url: str, same_domain_only: bool = True) -> list[str]:
+    """Extract links from *html* relative to *base_url*.
+
+    Parameters
+    ----------
+    html: str
+        Raw HTML contents to scan.
+    base_url: str
+        URL used to resolve relative links.
+    same_domain_only: bool
+        When True (default) only returns links that share the
+        same registrable domain as ``base_url``. When False, links from
+        any domain are returned.
+
+    Returns
+    -------
+    list[str]
+        Unique, ordered list of discovered URLs.
+    """
     out = []
-    if not html: return out
+    if not html:
+        return out
     soup = BeautifulSoup(html, "lxml")
     for a in soup.find_all("a", href=True):
         href = urllib.parse.urljoin(base_url, a["href"])
-        # Filtra solo mismo dominio
-        if same_domain(base_url, href):
+        if same_domain_only:
+            if same_domain(base_url, href):
+                out.append(href.split("#")[0])
+        else:
             out.append(href.split("#")[0])
-    # sitemap discovery
     return list(dict.fromkeys(out))  # unique, preserve order
 
 def same_domain(a: str, b: str) -> bool:
     ea, eb = tldextract.extract(a), tldextract.extract(b)
     return (ea.domain, ea.suffix) == (eb.domain, eb.suffix)
+
+
+def search_duckduckgo(query: str, max_results: int = 10) -> list[str]:
+    """Return a list of result URLs from DuckDuckGo for *query*.
+
+    This uses the public HTML endpoint which does not require an API key.
+    Results are unverified and may include non-product pages.
+    """
+    try:
+        params = {"q": query, "t": "hj", "ia": "web"}
+        r = requests.get("https://duckduckgo.com/html/", params=params, headers=HEADERS, timeout=TIMEOUT)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "lxml")
+        urls = []
+        for a in soup.select("a.result__a", limit=max_results):
+            href = a.get("href")
+            if href:
+                urls.append(href)
+        return urls
+    except Exception:
+        return []
 
 def parse_json_ld_product(soup: BeautifulSoup):
     for tag in soup.find_all("script", type="application/ld+json"):
@@ -200,6 +242,42 @@ def crawl_domain(start_url: str, thresholds, divisor_vol=5000, max_pages=25, del
         # Expande enlaces del mismo dominio
         for link in find_links(html, url):
             if link not in visited and same_domain(start_url, link):
+                q.put(link)
+        time.sleep(delay)
+    return results
+
+
+def crawl_web(query: str, thresholds, divisor_vol=5000, max_pages=25, delay=1.0):
+    """Crawl the web broadly starting from search results for *query*.
+
+    The crawler uses DuckDuckGo to obtain seed URLs and then follows links
+    without restricting to the same domain. The number of fetched pages is
+    limited by *max_pages* to avoid unbounded crawling.
+    """
+    seeds = search_duckduckgo(query, max_results=max_pages)
+    visited = set()
+    q = queue.Queue()
+    for url in seeds:
+        q.put(url)
+    results = []
+
+    while not q.empty() and len(visited) < max_pages:
+        url = q.get()
+        if url in visited:
+            continue
+        visited.add(url)
+        html = fetch(url)
+        if not html:
+            continue
+        soup = BeautifulSoup(html, "lxml")
+        if parse_json_ld_product(soup):
+            try:
+                row = parse_product_page(html, url, thresholds, divisor_vol)
+                results.append(row)
+            except Exception:
+                pass
+        for link in find_links(html, url, same_domain_only=False):
+            if link not in visited:
                 q.put(link)
         time.sleep(delay)
     return results

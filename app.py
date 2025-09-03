@@ -1,10 +1,10 @@
 \
 import streamlit as st
 import pandas as pd
-import json, os, time, io, yaml
+import json, os, time, io
 import numpy as np
 import threading
-from web_ingestor import crawl_domain
+from web_ingestor import crawl_web
 from scheduler import schedule_crawl
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
@@ -17,7 +17,6 @@ from rapidfuzz import process, fuzz
 import db
 
 DEFAULT_PARAMS_PATH = "parametros_logistica.json"
-DEFAULT_SOURCES_YML = "sources.yml"
 
 @st.cache_data(show_spinner=False)
 def load_params(path=DEFAULT_PARAMS_PATH):
@@ -37,29 +36,25 @@ def load_params(path=DEFAULT_PARAMS_PATH):
         ],
     }
 
-@st.cache_data(show_spinner=False)
-def load_sources(path=DEFAULT_SOURCES_YML):
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            y = yaml.safe_load(f)
-            return y.get("sources", []), y.get("max_pages_per_domain", 25), y.get("delay_seconds", 1.0)
-    return [], 25, 1.0
 
 def save_params(params, path=DEFAULT_PARAMS_PATH):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(params, f, ensure_ascii=False, indent=2)
 
-def save_sources(sources, max_pages, delay, path=DEFAULT_SOURCES_YML):
-    y = {"sources": sources, "max_pages_per_domain": max_pages, "delay_seconds": delay}
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(yaml.safe_dump(y, sort_keys=False, allow_unicode=True))
 
 st.set_page_config(page_title="Clasificador Logístico Ripley", page_icon="📦", layout="wide")
 st.title("📦 Clasificador de Clase Logística (auto-ingesta web)")
 st.caption("Crawling legal (robots.txt), reglas por peso/volumen, diccionario vivo y baseline ML.")
 
 params = load_params()
-sources, max_pages, delay = load_sources()
+
+# Estado inicial para búsqueda web
+if "search_query" not in st.session_state:
+    st.session_state.search_query = "producto"
+if "max_pages" not in st.session_state:
+    st.session_state.max_pages = 25
+if "delay" not in st.session_state:
+    st.session_state.delay = 1.0
 
 # Inicializar base de datos y cargar diccionario
 db.init_db()
@@ -87,7 +82,14 @@ def start_scheduler():
     st.session_state.scheduler_stop_event = threading.Event()
     t = threading.Thread(
         target=schedule_crawl,
-        args=(st.session_state.scheduler_interval, merge_rows, st.session_state.scheduler_stop_event),
+        args=(
+            st.session_state.scheduler_interval,
+            st.session_state.search_query,
+            int(st.session_state.max_pages),
+            float(st.session_state.delay),
+            merge_rows,
+            st.session_state.scheduler_stop_event,
+        ),
         daemon=True,
     )
     st.session_state.scheduler_thread = t
@@ -98,7 +100,7 @@ def stop_scheduler():
         st.session_state.scheduler_stop_event.set()
         st.session_state.scheduler_thread = None
 
-# Sidebar: parámetros y fuentes
+# Sidebar: parámetros
 with st.sidebar:
     st.header("⚙️ Parámetros")
     params["divisor_volumetrico"] = st.number_input("Divisor volumétrico (cm)", value=int(params["divisor_volumetrico"]), step=100)
@@ -110,21 +112,29 @@ with st.sidebar:
         save_params(params)
         st.success("Parámetros guardados.")
 
-    st.header("🌐 Fuentes (dominios)")
-    st.caption("La app explorará estos dominios respetando robots.txt y límites.")
-    src_text = st.text_area("Dominios (uno por línea)", value="\n".join(sources), height=150)
-    colA, colB = st.columns(2)
-    with colA:
-        max_pages = st.number_input("Máx. páginas por dominio", value=int(max_pages), min_value=5, step=5)
-    with colB:
-        delay = st.number_input("Delay entre requests (seg)", value=float(delay), min_value=0.5, step=0.5)
-    if st.button("💾 Guardar fuentes", use_container_width=True, key="save_sources"):
-        new_sources = [s.strip() for s in src_text.splitlines() if s.strip()]
-        save_sources(new_sources, max_pages, delay)
-        st.success("Fuentes guardadas.")
-
 st.subheader("1) 📥 Ingesta automática desde la web (crawler)")
-st.write("La app recorrerá cada dominio y extraerá fichas de producto con **JSON-LD Product** cuando existan.")
+st.write("La app buscará en la web páginas que contengan metadatos **JSON-LD Product**.")
+
+st.session_state.search_query = st.text_input(
+    "Término de búsqueda web",
+    value=st.session_state.search_query,
+    help="Se usará DuckDuckGo para descubrir URLs iniciales",
+)
+colA, colB = st.columns(2)
+with colA:
+    st.session_state.max_pages = st.number_input(
+        "Máx. páginas a explorar",
+        value=int(st.session_state.max_pages),
+        min_value=5,
+        step=5,
+    )
+with colB:
+    st.session_state.delay = st.number_input(
+        "Delay entre requests (seg)",
+        value=float(st.session_state.delay),
+        min_value=0.5,
+        step=0.5,
+    )
 
 st.markdown("**Programar ingesta periódica**")
 st.number_input(
@@ -161,20 +171,21 @@ with col3:
         start_scheduler()
 
 if st.button("🚀 Ejecutar ingesta web ahora", use_container_width=True):
-    sources, max_pages, delay = load_sources()
-    progress = st.progress(0.0, text="Iniciando...")
-    all_rows = []
-    for i, domain in enumerate(sources):
-        progress.progress((i)/max(1, len(sources)), text=f"Crawling: {domain}")
-        try:
-            rows = crawl_domain(domain, params["clases_por_peso"], params["divisor_volumetrico"], max_pages=max_pages, delay=delay)
-            all_rows.extend(rows)
-        except Exception as e:
-            st.warning(f"Error en {domain}: {e}")
+    progress = st.progress(0.0, text=f"Buscando: {st.session_state.search_query}")
+    try:
+        rows = crawl_web(
+            st.session_state.search_query,
+            params["clases_por_peso"],
+            params["divisor_volumetrico"],
+            max_pages=int(st.session_state.max_pages),
+            delay=float(st.session_state.delay),
+        )
+    except Exception as e:
+        rows = []
+        st.warning(f"Error: {e}")
     progress.progress(1.0, text="Completado.")
-    if all_rows:
-        new_df = pd.DataFrame(all_rows)
-        # de-dup por hash_row
+    if rows:
+        new_df = pd.DataFrame(rows)
         merged = pd.concat([st.session_state.dict_df, new_df], ignore_index=True)
         merged = merged.drop_duplicates(subset=["hash_row"], keep="first")
         st.session_state.dict_df = merged
@@ -182,7 +193,7 @@ if st.button("🚀 Ejecutar ingesta web ahora", use_container_width=True):
             db.upsert_product(row.to_dict())
         st.success(f"Ingesta completa. Nuevos registros: {len(new_df)} | Total en diccionario: {len(st.session_state.dict_df)}")
     else:
-        st.info("No se encontraron productos (revisa dominios, robots.txt o aumenta el límite de páginas).")
+        st.info("No se encontraron productos para la búsqueda indicada.")
 
 st.markdown("Vista del diccionario (primeros 200):")
 st.dataframe(st.session_state.dict_df.head(200), use_container_width=True, height=350)

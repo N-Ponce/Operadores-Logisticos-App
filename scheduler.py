@@ -1,13 +1,11 @@
 import os
 import json
 import time
-import yaml
 import schedule
 from typing import Callable
-from web_ingestor import crawl_domain
+from web_ingestor import crawl_web
 
 DEFAULT_PARAMS_PATH = "parametros_logistica.json"
-DEFAULT_SOURCES_YML = "sources.yml"
 
 def load_params(path: str = DEFAULT_PARAMS_PATH) -> dict:
     if os.path.exists(path):
@@ -15,37 +13,35 @@ def load_params(path: str = DEFAULT_PARAMS_PATH) -> dict:
             return json.load(f)
     return {"divisor_volumetrico": 5000, "clases_por_peso": []}
 
-def load_sources(path: str = DEFAULT_SOURCES_YML):
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            y = yaml.safe_load(f) or {}
-            return y.get("sources", []), y.get("max_pages_per_domain", 25), y.get("delay_seconds", 1.0)
-    return [], 25, 1.0
-
-def crawl_all_sources() -> list:
+def crawl_with_query(query: str, max_pages: int, delay: float) -> list:
     params = load_params()
-    sources, max_pages, delay = load_sources()
-    all_rows = []
-    for domain in sources:
-        try:
-            rows = crawl_domain(
-                domain,
-                params.get("clases_por_peso", []),
-                params.get("divisor_volumetrico", 5000),
-                max_pages=max_pages,
-                delay=delay,
-            )
-            all_rows.extend(rows)
-        except Exception:
-            continue
-    return all_rows
+    try:
+        return crawl_web(
+            query,
+            params.get("clases_por_peso", []),
+            params.get("divisor_volumetrico", 5000),
+            max_pages=max_pages,
+            delay=delay,
+        )
+    except Exception:
+        return []
 
-def schedule_crawl(interval_hours: int = 24, update_fn: Callable[[list], None] | None = None, stop_event=None):
+
+def schedule_crawl(
+    interval_hours: int = 24,
+    query: str = "producto",
+    max_pages: int = 25,
+    delay: float = 1.0,
+    update_fn: Callable[[list], None] | None = None,
+    stop_event=None,
+):
     schedule.clear()
+
     def job():
-        rows = crawl_all_sources()
+        rows = crawl_with_query(query, max_pages, delay)
         if update_fn:
             update_fn(rows)
+
     schedule.every(interval_hours).hours.do(job)
     job()
     while not (stop_event and stop_event.is_set()):

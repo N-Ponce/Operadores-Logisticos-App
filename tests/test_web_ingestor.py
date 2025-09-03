@@ -5,7 +5,7 @@ from pathlib import Path
 # Ensure the repository root is on the import path for direct module imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from web_ingestor import parse_product_page, classify_by_thresholds
+from web_ingestor import parse_product_page, classify_by_thresholds, find_links
 
 
 def test_classify_by_thresholds_selects_correct_class():
@@ -54,3 +54,17 @@ def test_parse_product_page_jsonld_dimensions_and_classification():
     assert row["peso_fact_kg"] == 1.5
     assert row["clase_logistica"] == "M"
     assert re.fullmatch(r"[0-9a-f]{64}", row["hash_row"])
+
+
+def test_find_links_cross_domain_option():
+    html = (
+        '<a href="http://example.com/a">A</a>'
+        '<a href="http://other.com/b">B</a>'
+    )
+    base = "http://example.com"
+    same = find_links(html, base, same_domain_only=True)
+    assert "http://example.com/a" in same
+    assert "http://other.com/b" not in same
+    wide = find_links(html, base, same_domain_only=False)
+    assert "http://example.com/a" in wide
+    assert "http://other.com/b" in wide
