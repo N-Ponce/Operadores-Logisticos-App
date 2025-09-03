@@ -24,6 +24,14 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Pruebas
+
+Ejecuta los tests unitarios con:
+
+```bash
+pytest -q
+```
+
 ## Deploy en Streamlit Cloud
 1. Crea un repo en GitHub y sube estos archivos tal cual.
 2. Ve a https://share.streamlit.io , conecta tu repo y selecciona `app.py`.
