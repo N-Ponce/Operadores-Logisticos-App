@@ -2,11 +2,15 @@
 import streamlit as st
 import pandas as pd
 import json, os, time, io, yaml
+import numpy as np
 from web_ingestor import crawl_domain
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, accuracy_score
+from sklearn.preprocessing import LabelEncoder
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, GlobalAveragePooling1D, Dense
 from rapidfuzz import process, fuzz
 
 DEFAULT_PARAMS_PATH = "parametros_logistica.json"
@@ -155,25 +159,48 @@ st.caption("Usa los datos del diccionario (con tus correcciones). Se requiere �
 if st.button("Entrenar modelo", disabled=not enough):
     try:
         X_train, X_test, y_train, y_test = train_test_split(
-            ml_df["product_name"], ml_df["clase_logistica"], test_size=0.2, random_state=42, stratify=ml_df["clase_logistica"]
+            ml_df["product_name"], ml_df["clase_logistica"], test_size=0.2,
+            random_state=42, stratify=ml_df["clase_logistica"]
         )
-        vect = TfidfVectorizer(min_df=2, ngram_range=(1,2))
-        Xtr = vect.fit_transform(X_train); Xte = vect.transform(X_test)
-        clf = LogisticRegression(max_iter=1000)
-        clf.fit(Xtr, y_train)
-        y_pred = clf.predict(Xte)
+
+        tokenizer = Tokenizer(num_words=10000, oov_token="<OOV>")
+        tokenizer.fit_on_texts(X_train)
+        maxlen = 20
+        Xtr = pad_sequences(tokenizer.texts_to_sequences(X_train), maxlen=maxlen, padding="post")
+        Xte = pad_sequences(tokenizer.texts_to_sequences(X_test), maxlen=maxlen, padding="post")
+
+        le = LabelEncoder()
+        y_train_enc = le.fit_transform(y_train)
+
+        model = Sequential([
+            Embedding(input_dim=10000, output_dim=16, input_length=maxlen),
+            GlobalAveragePooling1D(),
+            Dense(len(le.classes_), activation="softmax"),
+        ])
+        model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+        model.fit(Xtr, y_train_enc, epochs=10, verbose=0)
+
+        y_pred_enc = np.argmax(model.predict(Xte), axis=1)
+        y_pred = le.inverse_transform(y_pred_enc)
         st.write("**Accuracy:**", round(accuracy_score(y_test, y_pred), 4))
         st.text(classification_report(y_test, y_pred))
-        # Guardar artefactos en sesión (sencillo)
-        st.session_state.ml_vect = vect
-        st.session_state.ml_clf = clf
+
+        st.session_state.ml_tokenizer = tokenizer
+        st.session_state.ml_model = model
+        st.session_state.ml_le = le
+        st.session_state.ml_maxlen = maxlen
         st.success("Modelo entrenado en memoria.")
     except Exception as e:
         st.error(f"Error entrenando modelo: {e}")
 
 test_text = st.text_input("Probar predicción ML (nombre de producto)")
-if test_text and "ml_vect" in st.session_state:
-    pred = st.session_state.ml_clf.predict(st.session_state.ml_vect.transform([test_text]))[0]
+if test_text and "ml_model" in st.session_state:
+    seq = pad_sequences(
+        st.session_state.ml_tokenizer.texts_to_sequences([test_text]),
+        maxlen=st.session_state.ml_maxlen, padding="post"
+    )
+    pred_enc = np.argmax(st.session_state.ml_model.predict(seq), axis=1)
+    pred = st.session_state.ml_le.inverse_transform(pred_enc)[0]
     st.info(f"Predicción de clase: **{pred}**")
 elif test_text:
     st.warning("Entrena el modelo primero.")
