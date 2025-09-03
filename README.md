@@ -2,10 +2,8 @@
 
 App en **Streamlit** que:
 - Ingresa productos automáticamente desde la web (respeta **robots.txt**, límite de páginas y demora).
-- Busca por título y **aprende** agregando los hallazgos al diccionario.
 - Calcula **peso facturable** (máx(real, volumétrico)) y **clase logística** por umbrales.
 - Mantiene un **diccionario vivo** (editable desde UI).
-- Permite entrenar un **baseline ML** (TF-IDF + Logistic) con tus datos.
 - Lista para **deploy en Streamlit Community Cloud**.
 
 ## Estructura
@@ -35,7 +33,7 @@ pytest -q
 ## Deploy en Streamlit Cloud
 1. Crea un repo en GitHub y sube estos archivos tal cual.
 2. Ve a https://share.streamlit.io , conecta tu repo y selecciona `app.py`.
-3. Dentro de la app, ajusta el término de búsqueda y usa **“🚀 Ejecutar ingesta web ahora”** para poblar el diccionario.
+3. Dentro de la app, escribe el nombre de un producto en el campo de búsqueda y la ingesta se ejecutará automáticamente para poblar el diccionario.
 
 ## Notas de cumplimiento
 - La ingesta respeta **robots.txt** y aplica **delay** entre requests.
