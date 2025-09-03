@@ -13,7 +13,6 @@ App en **Streamlit** que:
 ├── app.py
 ├── web_ingestor.py
 ├── parametros_logistica.json
-├── sources.yml
 ├── requirements.txt
 └── .streamlit/config.toml
 ```
@@ -35,10 +34,9 @@ pytest -q
 ## Deploy en Streamlit Cloud
 1. Crea un repo en GitHub y sube estos archivos tal cual.
 2. Ve a https://share.streamlit.io , conecta tu repo y selecciona `app.py`.
-3. (Opcional) Edita `sources.yml` en el repo para definir tus dominios.
-4. Dentro de la app, usa **“🚀 Ejecutar ingesta web ahora”** para poblar el diccionario.
+3. Dentro de la app, ajusta el término de búsqueda y usa **“🚀 Ejecutar ingesta web ahora”** para poblar el diccionario.
 
 ## Notas de cumplimiento
 - La ingesta respeta **robots.txt** y aplica **delay** entre requests.
 - La app solo extrae metadatos visibles públicamente (JSON-LD Product / OpenGraph).
-- Ajusta `sources.yml` para incluir únicamente dominios que tengas permiso de explorar.
+- Se recomienda usar términos de búsqueda relacionados con sitios que tengas permiso de explorar.
