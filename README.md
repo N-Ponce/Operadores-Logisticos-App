@@ -2,10 +2,8 @@
 
 App en **Streamlit** que:
 - Ingresa productos automáticamente desde la web (respeta **robots.txt**, límite de páginas y demora).
-- Busca por título y **aprende** agregando los hallazgos al diccionario.
 - Calcula **peso facturable** (máx(real, volumétrico)) y **clase logística** por umbrales.
 - Mantiene un **diccionario vivo** (editable desde UI).
-- Permite entrenar un **baseline ML** (TF-IDF + Logistic) con tus datos.
 - Lista para **deploy en Streamlit Community Cloud**.
 
 ## Estructura

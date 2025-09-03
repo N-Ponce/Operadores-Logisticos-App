@@ -1,19 +1,7 @@
-\
 import streamlit as st
 import pandas as pd
-import json, os, time, io
-import numpy as np
-import threading
+import json, os
 from web_ingestor import crawl_web
-from scheduler import schedule_crawl
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score
-from sklearn.preprocessing import LabelEncoder
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Embedding, GlobalAveragePooling1D, Dense
-from rapidfuzz import process, fuzz
 import db
 
 DEFAULT_PARAMS_PATH = "parametros_logistica.json"
@@ -37,14 +25,9 @@ def load_params(path=DEFAULT_PARAMS_PATH):
     }
 
 
-def save_params(params, path=DEFAULT_PARAMS_PATH):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(params, f, ensure_ascii=False, indent=2)
-
-
 st.set_page_config(page_title="Clasificador Logístico Ripley", page_icon="📦", layout="wide")
 st.title("📦 Clasificador de Clase Logística (auto-ingesta web)")
-st.caption("Crawling legal (robots.txt), reglas por peso/volumen, diccionario vivo y baseline ML.")
+st.caption("Crawling legal (robots.txt), reglas por peso/volumen y diccionario vivo.")
 
 params = load_params()
 
@@ -61,39 +44,8 @@ db.init_db()
 if "dict_df" not in st.session_state:
     st.session_state.dict_df = db.load_dictionary()
 
-if "scheduler_thread" not in st.session_state:
-    st.session_state.scheduler_thread = None
-if "scheduler_stop_event" not in st.session_state:
-    st.session_state.scheduler_stop_event = threading.Event()
-if "scheduler_interval" not in st.session_state:
-    st.session_state.scheduler_interval = 1
+# Sidebar eliminado para interfaz minimalista
 
-def merge_rows(rows):
-    if not rows:
-        return
-    new_df = pd.DataFrame(rows)
-    merged = pd.concat([st.session_state.dict_df, new_df], ignore_index=True)
-    merged = merged.drop_duplicates(subset=["hash_row"], keep="first")
-    st.session_state.dict_df = merged
-
-def start_scheduler():
-    if st.session_state.scheduler_thread and st.session_state.scheduler_thread.is_alive():
-        return
-    st.session_state.scheduler_stop_event = threading.Event()
-    t = threading.Thread(
-        target=schedule_crawl,
-        args=(
-            st.session_state.scheduler_interval,
-            st.session_state.search_query,
-            int(st.session_state.max_pages),
-            float(st.session_state.delay),
-            merge_rows,
-            st.session_state.scheduler_stop_event,
-        ),
-        daemon=True,
-    )
-    st.session_state.scheduler_thread = t
-    t.start()
 
 def stop_scheduler():
     if st.session_state.scheduler_thread and st.session_state.scheduler_thread.is_alive():
@@ -143,6 +95,7 @@ with colB:
         min_value=0.5,
         step=0.5,
     )
+
 
 if show_advanced:
     st.markdown("**Programar ingesta periódica**")
@@ -216,6 +169,7 @@ if st.button("🚀 Ejecutar ingesta web ahora", use_container_width=True):
 st.markdown("Vista del diccionario (primeros 200):")
 st.dataframe(st.session_state.dict_df.head(200), use_container_width=True, height=350)
 
+
 if show_advanced:
     st.subheader("🔎 Búsqueda automática por título")
     q = st.text_input("Título del producto")
@@ -282,10 +236,12 @@ if show_advanced:
                     db.upsert_product(st.session_state.dict_df.loc[sel].to_dict())
                     st.success("Actualizado.")
 
+
 st.subheader("⬇️ Exportar diccionario")
 export_df = db.load_dictionary()
 csv_data = export_df.to_csv(index=False).encode("utf-8")
 st.download_button("Descargar CSV", csv_data, file_name="diccionario_logistica.csv", mime="text/csv")
+
 
 if show_advanced:
     st.divider()
@@ -359,3 +315,4 @@ if show_advanced:
         st.info(f"Predicción de clase: **{pred}**")
     elif test_text:
         st.warning("Entrena el modelo primero.")
+

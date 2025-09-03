@@ -84,7 +84,20 @@ def search_duckduckgo(query: str, max_results: int = 10) -> list[str]:
         urls = []
         for a in soup.select("a.result__a", limit=max_results):
             href = a.get("href")
-            if href:
+            if not href:
+                continue
+            # DuckDuckGo links are redirect wrappers of the form
+            # //duckduckgo.com/l/?uddg=<url-encoded-target>
+            if href.startswith("//"):
+                href = "https:" + href
+            try:
+                parsed = urllib.parse.urlparse(href)
+                qs = urllib.parse.parse_qs(parsed.query)
+                if "uddg" in qs:
+                    urls.append(urllib.parse.unquote(qs["uddg"][0]))
+                else:
+                    urls.append(href)
+            except Exception:
                 urls.append(href)
         return urls
     except Exception:
