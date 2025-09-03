@@ -8,6 +8,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, accuracy_score
 from rapidfuzz import process, fuzz
+import db
 
 DEFAULT_PARAMS_PATH = "parametros_logistica.json"
 DEFAULT_SOURCES_YML = "sources.yml"
@@ -54,12 +55,10 @@ st.caption("Crawling legal (robots.txt), reglas por peso/volumen, diccionario vi
 params = load_params()
 sources, max_pages, delay = load_sources()
 
-# Estado principal del diccionario
+# Inicializar base de datos y cargar diccionario
+db.init_db()
 if "dict_df" not in st.session_state:
-    st.session_state.dict_df = pd.DataFrame(columns=[
-        "product_name","brand","peso_kg","largo_cm","ancho_cm","alto_cm",
-        "peso_vol_kg","peso_fact_kg","clase_logistica","source_url","fetched_at","hash_row"
-    ])
+    st.session_state.dict_df = db.load_dictionary()
 
 # Sidebar: parámetros y fuentes
 with st.sidebar:
@@ -107,6 +106,8 @@ if st.button("🚀 Ejecutar ingesta web ahora", use_container_width=True):
         merged = pd.concat([st.session_state.dict_df, new_df], ignore_index=True)
         merged = merged.drop_duplicates(subset=["hash_row"], keep="first")
         st.session_state.dict_df = merged
+        for _, row in new_df.iterrows():
+            db.upsert_product(row.to_dict())
         st.success(f"Ingesta completa. Nuevos registros: {len(new_df)} | Total en diccionario: {len(st.session_state.dict_df)}")
     else:
         st.info("No se encontraron productos (revisa dominios, robots.txt o aumenta el límite de páginas).")
@@ -141,10 +142,12 @@ if q:
             new_class = st.selectbox("Editar clase", classes, index=max(0, classes.index(edit_row.get("clase_logistica")) if edit_row.get("clase_logistica") in classes else 0))
             if st.button("💾 Guardar cambios en fila seleccionada"):
                 st.session_state.dict_df.at[sel, "clase_logistica"] = new_class
+                db.upsert_product(st.session_state.dict_df.loc[sel].to_dict())
                 st.success("Actualizado.")
 
 st.subheader("3) ⬇️ Exportar diccionario")
-csv_data = st.session_state.dict_df.to_csv(index=False).encode("utf-8")
+export_df = db.load_dictionary()
+csv_data = export_df.to_csv(index=False).encode("utf-8")
 st.download_button("Descargar CSV", csv_data, file_name="diccionario_logistica.csv", mime="text/csv")
 
 st.divider()
