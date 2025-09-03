@@ -148,7 +148,10 @@ with col1:
     if st.button(
         "▶️ Iniciar scheduler",
         use_container_width=True,
-        disabled=st.session_state.scheduler_thread and st.session_state.scheduler_thread.is_alive(),
+        disabled=(
+            st.session_state.scheduler_thread is not None
+            and st.session_state.scheduler_thread.is_alive()
+        ),
         key="start_sched",
     ):
         start_scheduler()
