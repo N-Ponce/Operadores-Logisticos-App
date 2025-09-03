@@ -1,1 +1,36 @@
-# Operadores-Logisticos-App
+# Clasificador de Clase Logística (Ripley)
+
+App en **Streamlit** que:
+- Ingresa productos automáticamente desde la web (respeta **robots.txt**, límite de páginas y demora).
+- Calcula **peso facturable** (máx(real, volumétrico)) y **clase logística** por umbrales.
+- Mantiene un **diccionario vivo** (editable desde UI).
+- Permite entrenar un **baseline ML** (TF-IDF + Logistic) con tus datos.
+- Lista para **deploy en Streamlit Community Cloud**.
+
+## Estructura
+```
+.
+├── app.py
+├── web_ingestor.py
+├── parametros_logistica.json
+├── sources.yml
+├── requirements.txt
+└── .streamlit/config.toml
+```
+
+## Configuración rápida (local)
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## Deploy en Streamlit Cloud
+1. Crea un repo en GitHub y sube estos archivos tal cual.
+2. Ve a https://share.streamlit.io , conecta tu repo y selecciona `app.py`.
+3. (Opcional) Edita `sources.yml` en el repo para definir tus dominios.
+4. Dentro de la app, usa **“🚀 Ejecutar ingesta web ahora”** para poblar el diccionario.
+
+## Notas de cumplimiento
+- La ingesta respeta **robots.txt** y aplica **delay** entre requests.
+- La app solo extrae metadatos visibles públicamente (JSON-LD Product / OpenGraph).
+- Ajusta `sources.yml` para incluir únicamente dominios que tengas permiso de explorar.

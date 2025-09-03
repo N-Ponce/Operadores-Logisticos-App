@@ -1,0 +1,7 @@
+# Lista inicial de dominios permitidos para ingesta automática.
+# La app respeta robots.txt y limita el número de páginas.
+sources:
+  - https://www.openfoodfacts.org/ # dataset público para prueba (solo demo)
+  - https://www.example.com/       # reemplaza con dominios de sellers permitidos
+max_pages_per_domain: 25
+delay_seconds: 1.0

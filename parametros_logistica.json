@@ -1,0 +1,33 @@
+{
+  "divisor_volumetrico": 5000,
+  "clases_por_peso": [
+    {
+      "kg_min": 0.0,
+      "clase": "XS"
+    },
+    {
+      "kg_min": 0.5,
+      "clase": "S"
+    },
+    {
+      "kg_min": 1.0,
+      "clase": "M"
+    },
+    {
+      "kg_min": 2.0,
+      "clase": "L"
+    },
+    {
+      "kg_min": 5.0,
+      "clase": "XL"
+    },
+    {
+      "kg_min": 10.0,
+      "clase": "XXL"
+    },
+    {
+      "kg_min": 20.0,
+      "clase": "Oversize"
+    }
+  ]
+}
