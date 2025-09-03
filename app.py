@@ -2,7 +2,9 @@
 import streamlit as st
 import pandas as pd
 import json, os, time, io, yaml
+import threading
 from web_ingestor import crawl_domain
+from scheduler import schedule_crawl
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -61,6 +63,38 @@ if "dict_df" not in st.session_state:
         "peso_vol_kg","peso_fact_kg","clase_logistica","source_url","fetched_at","hash_row"
     ])
 
+if "scheduler_thread" not in st.session_state:
+    st.session_state.scheduler_thread = None
+if "scheduler_stop_event" not in st.session_state:
+    st.session_state.scheduler_stop_event = threading.Event()
+if "scheduler_interval" not in st.session_state:
+    st.session_state.scheduler_interval = 1
+
+def merge_rows(rows):
+    if not rows:
+        return
+    new_df = pd.DataFrame(rows)
+    merged = pd.concat([st.session_state.dict_df, new_df], ignore_index=True)
+    merged = merged.drop_duplicates(subset=["hash_row"], keep="first")
+    st.session_state.dict_df = merged
+
+def start_scheduler():
+    if st.session_state.scheduler_thread and st.session_state.scheduler_thread.is_alive():
+        return
+    st.session_state.scheduler_stop_event = threading.Event()
+    t = threading.Thread(
+        target=schedule_crawl,
+        args=(st.session_state.scheduler_interval, merge_rows, st.session_state.scheduler_stop_event),
+        daemon=True,
+    )
+    st.session_state.scheduler_thread = t
+    t.start()
+
+def stop_scheduler():
+    if st.session_state.scheduler_thread and st.session_state.scheduler_thread.is_alive():
+        st.session_state.scheduler_stop_event.set()
+        st.session_state.scheduler_thread = None
+
 # Sidebar: parámetros y fuentes
 with st.sidebar:
     st.header("⚙️ Parámetros")
@@ -88,6 +122,40 @@ with st.sidebar:
 
 st.subheader("1) 📥 Ingesta automática desde la web (crawler)")
 st.write("La app recorrerá cada dominio y extraerá fichas de producto con **JSON-LD Product** cuando existan.")
+
+st.markdown("**Programar ingesta periódica**")
+st.session_state.scheduler_interval = st.number_input(
+    "Frecuencia de ejecución (horas)",
+    min_value=1,
+    value=int(st.session_state.scheduler_interval),
+    key="scheduler_interval",
+)
+col1, col2, col3 = st.columns(3)
+with col1:
+    if st.button(
+        "▶️ Iniciar scheduler",
+        use_container_width=True,
+        disabled=st.session_state.scheduler_thread and st.session_state.scheduler_thread.is_alive(),
+        key="start_sched",
+    ):
+        start_scheduler()
+with col2:
+    if st.button(
+        "⏹️ Detener scheduler",
+        use_container_width=True,
+        disabled=not (st.session_state.scheduler_thread and st.session_state.scheduler_thread.is_alive()),
+        key="stop_sched",
+    ):
+        stop_scheduler()
+with col3:
+    if st.button(
+        "🔄 Reiniciar scheduler",
+        use_container_width=True,
+        disabled=not (st.session_state.scheduler_thread and st.session_state.scheduler_thread.is_alive()),
+        key="restart_sched",
+    ):
+        stop_scheduler()
+        start_scheduler()
 
 if st.button("🚀 Ejecutar ingesta web ahora", use_container_width=True):
     sources, max_pages, delay = load_sources()
