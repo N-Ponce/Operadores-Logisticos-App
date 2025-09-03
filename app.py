@@ -33,17 +33,34 @@ params = load_params()
 
 # Estado inicial para búsqueda web
 if "search_query" not in st.session_state:
-    st.session_state.search_query = "producto"
-if "max_pages" not in st.session_state:
-    st.session_state.max_pages = 25
-if "delay" not in st.session_state:
-    st.session_state.delay = 1.0
+    st.session_state.search_query = ""
 
 # Inicializar base de datos y cargar diccionario
 db.init_db()
 if "dict_df" not in st.session_state:
     st.session_state.dict_df = db.load_dictionary()
 
+
+MAX_PAGES = 25
+DELAY = 1.0
+
+def run_ingesta():
+    query = st.session_state.search_query.strip()
+    if not query:
+        return
+    with st.spinner(f"Buscando: {query}"):
+        try:
+            rows = crawl_web(
+                query,
+                params["clases_por_peso"],
+                params["divisor_volumetrico"],
+                max_pages=MAX_PAGES,
+                delay=DELAY,
+            )
+        except Exception as e:
+            rows = []
+            st.warning(f"Error: {e}")
+=======
 # Sidebar eliminado para interfaz minimalista
 
 
@@ -155,6 +172,7 @@ if st.button("🚀 Ejecutar ingesta web ahora", use_container_width=True):
         rows = []
         st.warning(f"Error: {e}")
     progress.progress(1.0, text="Completado.")
+
     if rows:
         new_df = pd.DataFrame(rows)
         merged = pd.concat([st.session_state.dict_df, new_df], ignore_index=True)
@@ -162,6 +180,24 @@ if st.button("🚀 Ejecutar ingesta web ahora", use_container_width=True):
         st.session_state.dict_df = merged
         for _, row in new_df.iterrows():
             db.upsert_product(row.to_dict())
+
+        st.success(
+            f"Ingesta completa. Nuevos registros: {len(new_df)} | Total en diccionario: {len(st.session_state.dict_df)}"
+        )
+    else:
+        st.info("No se encontraron productos para la búsqueda indicada.")
+
+st.text_input(
+    "Nombre del producto",
+    key="search_query",
+    on_change=run_ingesta,
+    placeholder="Ej: PS5",
+)
+
+st.markdown("Vista del diccionario (primeros 200):")
+st.dataframe(st.session_state.dict_df.head(200), use_container_width=True, height=350)
+
+=======
         st.success(f"Ingesta completa. Nuevos registros: {len(new_df)} | Total en diccionario: {len(st.session_state.dict_df)}")
     else:
         st.info("No se encontraron productos para la búsqueda indicada.")
@@ -241,6 +277,7 @@ st.subheader("⬇️ Exportar diccionario")
 export_df = db.load_dictionary()
 csv_data = export_df.to_csv(index=False).encode("utf-8")
 st.download_button("Descargar CSV", csv_data, file_name="diccionario_logistica.csv", mime="text/csv")
+
 
 
 if show_advanced:
