@@ -127,7 +127,7 @@ st.subheader("1) 📥 Ingesta automática desde la web (crawler)")
 st.write("La app recorrerá cada dominio y extraerá fichas de producto con **JSON-LD Product** cuando existan.")
 
 st.markdown("**Programar ingesta periódica**")
-st.session_state.scheduler_interval = st.number_input(
+st.number_input(
     "Frecuencia de ejecución (horas)",
     min_value=1,
     value=int(st.session_state.scheduler_interval),
