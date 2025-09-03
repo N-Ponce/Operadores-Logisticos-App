@@ -201,16 +201,43 @@ if st.button("🚀 Ejecutar ingesta web ahora", use_container_width=True):
 st.markdown("Vista del diccionario (primeros 200):")
 st.dataframe(st.session_state.dict_df.head(200), use_container_width=True, height=350)
 
-st.subheader("2) 🔎 Búsqueda por nombre + validación humana")
-q = st.text_input("Buscar producto por nombre")
+st.subheader("2) 🔎 Búsqueda automática por título")
+q = st.text_input("Título del producto")
+if st.button("Buscar y aprender", use_container_width=True) and q:
+    progress = st.progress(0.0, text=f"Buscando: {q}")
+    try:
+        rows = crawl_web(
+            q,
+            params["clases_por_peso"],
+            params["divisor_volumetrico"],
+            max_pages=int(st.session_state.max_pages),
+            delay=float(st.session_state.delay),
+        )
+    except Exception as e:
+        rows = []
+        st.warning(f"Error: {e}")
+    progress.progress(1.0, text="Completado.")
+    if rows:
+        new_df = pd.DataFrame(rows)
+        merged = pd.concat([st.session_state.dict_df, new_df], ignore_index=True)
+        merged = merged.drop_duplicates(subset=["hash_row"], keep="first")
+        st.session_state.dict_df = merged
+        for _, row in new_df.iterrows():
+            db.upsert_product(row.to_dict())
+        st.success(
+            f"Se agregaron {len(new_df)} productos al diccionario. Total: {len(st.session_state.dict_df)}"
+        )
+    else:
+        st.info("No se encontraron productos en la web para este título.")
+
 if q:
     names = st.session_state.dict_df["product_name"].fillna("").tolist()
-    # fuzzy top-10
     matches = process.extract(q, names, scorer=fuzz.WRatio, limit=10)
     idxs = []
     for m, score, pos in matches:
-        # buscar índice de la fila con ese nombre (primera coincidencia)
-        idx = st.session_state.dict_df.index[st.session_state.dict_df["product_name"] == m].tolist()
+        idx = st.session_state.dict_df.index[
+            st.session_state.dict_df["product_name"] == m
+        ].tolist()
         if idx:
             idxs.append(idx[0])
     res = st.session_state.dict_df.loc[idxs] if idxs else pd.DataFrame()
@@ -223,9 +250,17 @@ if q:
             edit_row = st.session_state.dict_df.loc[sel].to_dict()
             st.write("**Detalle seleccionado**")
             st.json(edit_row)
-            # editar clase
             classes = [c["clase"] for c in params["clases_por_peso"]]
-            new_class = st.selectbox("Editar clase", classes, index=max(0, classes.index(edit_row.get("clase_logistica")) if edit_row.get("clase_logistica") in classes else 0))
+            new_class = st.selectbox(
+                "Editar clase",
+                classes,
+                index=max(
+                    0,
+                    classes.index(edit_row.get("clase_logistica"))
+                    if edit_row.get("clase_logistica") in classes
+                    else 0,
+                ),
+            )
             if st.button("💾 Guardar cambios en fila seleccionada"):
                 st.session_state.dict_df.at[sel, "clase_logistica"] = new_class
                 db.upsert_product(st.session_state.dict_df.loc[sel].to_dict())
