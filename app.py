@@ -60,7 +60,6 @@ def run_ingesta():
         except Exception as e:
             rows = []
             st.warning(f"Error: {e}")
-=======
 # Sidebar eliminado para interfaz minimalista
 
 
